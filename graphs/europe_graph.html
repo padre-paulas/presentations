@@ -906,7 +906,10 @@ function resetGraph() {
 }
 
 findBtn.addEventListener('click', () => {
-  findPath();
+  void findPath().catch((error) => {
+    console.error('Failed to find path:', error);
+    setFindButtonIdle();
+  });
 });
 
 resetBtn.addEventListener('click', resetGraph);
