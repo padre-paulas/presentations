@@ -622,12 +622,12 @@ const LABEL_SHIFT_CANDIDATES = [
 const DEFAULT_LABEL_WIDTH_PX = 40;
 const DEFAULT_LABEL_HEIGHT_PX = 12;
 
-function overlaps(rect1, rect2, collisionPaddingPx = 3) {
+function overlaps(rect1, rect2, collisionPadding = 3) {
   return !(
-    rect1.right < rect2.left - collisionPaddingPx ||
-    rect1.left > rect2.right + collisionPaddingPx ||
-    rect1.bottom < rect2.top - collisionPaddingPx ||
-    rect1.top > rect2.bottom + collisionPaddingPx
+    rect1.right < rect2.left - collisionPadding ||
+    rect1.left > rect2.right + collisionPadding ||
+    rect1.bottom < rect2.top - collisionPadding ||
+    rect1.top > rect2.bottom + collisionPadding
   );
 }
 
@@ -716,6 +716,16 @@ function resetTraversalState() {
 
 function setPathOutputStatus(out, messageHtml, isError = false) {
   out.innerHTML = `<div class="${isError ? 'no-path-msg' : 'path-empty'}">${messageHtml}</div>`;
+}
+
+function setFindButtonBusy() {
+  findBtn.textContent = 'Searching...';
+  findBtn.disabled = true;
+}
+
+function setFindButtonIdle() {
+  findBtn.textContent = 'Find Shortest Path →';
+  findBtn.disabled = false;
 }
 
 function applyStates() {
@@ -857,16 +867,14 @@ async function findPath() {
   if (!currentFrom || !currentTo) return;
 
   const out = document.getElementById('pathOutput');
-  findBtn.textContent = 'Animating BFS...';
-  findBtn.disabled = true;
+  setFindButtonBusy();
   setPathOutputStatus(out, `Running BFS from <strong>${currentFrom}</strong> to <strong>${currentTo}</strong>...`);
 
   const { path, trace } = bfsWithTrace(currentFrom, currentTo);
   currentPath = [];
   const traversalCompleted = await animateBfs(trace, token);
   if (!traversalCompleted) {
-    findBtn.disabled = false;
-    findBtn.textContent = 'Find Shortest Path →';
+    setFindButtonIdle();
     return;
   }
 
@@ -875,8 +883,7 @@ async function findPath() {
     bfsFrontier = new Set();
     const pathCompleted = await animatePath(path, token);
     if (!pathCompleted) {
-      findBtn.disabled = false;
-      findBtn.textContent = 'Find Shortest Path →';
+      setFindButtonIdle();
       return;
     }
   } else {
@@ -890,8 +897,7 @@ async function findPath() {
 
   if (currentPath.length === 0) {
     setPathOutputStatus(out, `No land route between <strong>${currentFrom}</strong> and <strong>${currentTo}</strong>.`, true);
-    findBtn.disabled = false;
-    findBtn.textContent = 'Find Shortest Path →';
+    setFindButtonIdle();
     return;
   }
 
@@ -908,8 +914,7 @@ async function findPath() {
   const n = currentPath.length - 1;
   out.innerHTML = `<div class="path-steps">${steps}</div>
     <div class="summary-bar"><strong>${n}</strong> border crossing${n!==1?'s':''} · ${currentPath.length} countr${currentPath.length!==1?'ies':'y'}</div>`;
-  findBtn.disabled = false;
-  findBtn.textContent = 'Find Shortest Path →';
+  setFindButtonIdle();
 }
 
 function resetGraph() {
@@ -919,8 +924,7 @@ function resetGraph() {
   toSelect.value = '';
   applyStates();
   document.getElementById('pathOutput').innerHTML = `<span class="path-empty">Select countries and click "Find Shortest Path"</span>`;
-  findBtn.disabled = false;
-  findBtn.textContent = 'Find Shortest Path →';
+  setFindButtonIdle();
 }
 
 findBtn.addEventListener('click', () => {
