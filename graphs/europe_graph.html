@@ -622,12 +622,12 @@ const LABEL_SHIFT_CANDIDATES = [
 const DEFAULT_LABEL_WIDTH_PX = 40;
 const DEFAULT_LABEL_HEIGHT_PX = 12;
 
-function overlaps(a, b, collisionPaddingPx = 3) {
+function overlaps(rect1, rect2, collisionPaddingPx = 3) {
   return !(
-    a.right + collisionPaddingPx < b.left ||
-    a.left > b.right + collisionPaddingPx ||
-    a.bottom + collisionPaddingPx < b.top ||
-    a.top > b.bottom + collisionPaddingPx
+    rect1.right + collisionPaddingPx < rect2.left ||
+    rect1.left > rect2.right + collisionPaddingPx ||
+    rect1.bottom + collisionPaddingPx < rect2.top ||
+    rect1.top > rect2.bottom + collisionPaddingPx
   );
 }
 
@@ -693,9 +693,9 @@ let bfsTraversedEdges = new Set();
 let bfsActiveEdges = new Set();
 let animationToken = 0;
 
-const BFS_STEP_ANIMATION_DELAY_MS = 230;
-const EDGE_HIGHLIGHT_PULSE_DELAY_MS = 130;
-const EDGE_POST_PULSE_DELAY_MS = BFS_STEP_ANIMATION_DELAY_MS - EDGE_HIGHLIGHT_PULSE_DELAY_MS;
+const BFS_STEP_DURATION_MS = 230;
+const EDGE_PULSE_DURATION_MS = 130;
+const EDGE_POST_PULSE_DURATION_MS = BFS_STEP_DURATION_MS - EDGE_PULSE_DURATION_MS;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -711,6 +711,10 @@ function resetTraversalState() {
   bfsCurrent = '';
   bfsTraversedEdges = new Set();
   bfsActiveEdges = new Set();
+}
+
+function setPathOutputStatus(out, messageHtml, isError = false) {
+  out.innerHTML = `<div class="${isError ? 'no-path-msg' : 'path-empty'}">${messageHtml}</div>`;
 }
 
 function applyStates() {
@@ -813,7 +817,7 @@ async function animateBfs(trace, token) {
       bfsVisited.add(step.node);
       bfsFrontier = new Set(step.frontier);
       applyStates();
-      await sleep(BFS_STEP_ANIMATION_DELAY_MS);
+      await sleep(BFS_STEP_DURATION_MS);
     } else if (step.type === 'discover') {
       const e1 = `${step.from}|${step.to}`;
       const e2 = `${step.to}|${step.from}`;
@@ -822,10 +826,10 @@ async function animateBfs(trace, token) {
       bfsTraversedEdges.add(e2);
       bfsFrontier = new Set(step.frontier);
       applyStates();
-      await sleep(EDGE_HIGHLIGHT_PULSE_DELAY_MS);
+      await sleep(EDGE_PULSE_DURATION_MS);
       bfsActiveEdges = new Set();
       applyStates();
-      await sleep(EDGE_POST_PULSE_DELAY_MS);
+      await sleep(EDGE_POST_PULSE_DURATION_MS);
     }
   }
   return token === animationToken;
@@ -838,7 +842,7 @@ async function animatePath(path, token) {
     if (token !== animationToken) return false;
     currentPath = path.slice(0, i + 1);
     applyStates();
-    await sleep(BFS_STEP_ANIMATION_DELAY_MS);
+    await sleep(BFS_STEP_DURATION_MS);
   }
   return token === animationToken;
 }
@@ -853,7 +857,7 @@ async function findPath() {
   const findBtn = document.getElementById('findBtn');
   findBtn.textContent = 'Animating BFS...';
   findBtn.disabled = true;
-  out.innerHTML = `<div class="path-empty">Running BFS from <strong>${currentFrom}</strong> to <strong>${currentTo}</strong>…</div>`;
+  setPathOutputStatus(out, `Running BFS from <strong>${currentFrom}</strong> to <strong>${currentTo}</strong>...`);
 
   const { path, trace } = bfsWithTrace(currentFrom, currentTo);
   currentPath = [];
@@ -883,7 +887,7 @@ async function findPath() {
   applyStates();
 
   if (currentPath.length === 0) {
-    out.innerHTML = `<div class="no-path-msg">No land route between <strong>${currentFrom}</strong> and <strong>${currentTo}</strong>.</div>`;
+    setPathOutputStatus(out, `No land route between <strong>${currentFrom}</strong> and <strong>${currentTo}</strong>.`, true);
     findBtn.disabled = false;
     findBtn.textContent = 'Find Shortest Path →';
     return;
