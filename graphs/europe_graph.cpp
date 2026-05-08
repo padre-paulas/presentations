@@ -32,7 +32,6 @@ std::vector<std::string> bfs(const Graph& graph, const std::string& start, const
         std::string node = target;
         while (node != start) {
           path.push_back(node);
-          if (!parent.count(node)) return {};
           node = parent[node];
         }
         path.push_back(start);
