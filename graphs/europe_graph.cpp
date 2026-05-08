@@ -30,12 +30,12 @@ std::vector<std::string> bfs(const Graph& graph, const std::string& start, const
       if (next == target) {
         std::vector<std::string> path;
         std::string node = target;
-        while (true) {
+        while (node != start) {
           path.push_back(node);
-          if (node == start) break;
           if (!parent.count(node)) return {};
           node = parent[node];
         }
+        path.push_back(start);
         std::reverse(path.begin(), path.end());
         return path;
       }
