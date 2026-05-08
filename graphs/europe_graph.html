@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>European Border Graph</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #181b24;
+  --surface2: #1e2130;
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.18);
+  --text: #e8eaf2;
+  --text2: #8b8fa8;
+  --accent: #4f8ef7;
+  --accent2: #6fa3ff;
+  --highlight: #f5c842;
+  --path-color: #4fc97a;
+  --font: 'IBM Plex Mono', monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--surface);
+  flex-shrink: 0;
+  z-index: 1000;
+  position: relative;
+}
+
+.logo {
+  width: 30px; height: 30px;
+  background: var(--accent);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px;
+}
+
+header h1 { font-size: 14px; font-weight: 600; letter-spacing: 0.04em; }
+header p  { font-size: 11px; color: var(--text2); margin-top: 1px; }
+
+.layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.controls { padding: 1rem; border-bottom: 1px solid var(--border); }
+.control-group { margin-bottom: 0.85rem; }
+
+label {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text2);
+  margin-bottom: 5px;
+}
+
+select {
+  width: 100%;
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 7px 28px 7px 9px;
+  font-family: var(--font);
+  font-size: 12px;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%238b8fa8' fill='none' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+select:focus { outline: none; border-color: var(--accent); }
+
+.find-btn {
+  width: 100%;
+  padding: 9px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: background 0.15s, transform 0.1s;
+}
+.find-btn:hover { background: var(--accent2); }
+.find-btn:active { transform: scale(0.98); }
+
+.reset-btn {
+  width: 100%;
+  padding: 7px;
+  background: transparent;
+  color: var(--text2);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: color 0.15s;
+}
+.reset-btn:hover { color: var(--text); }
+
+.result-panel {
+  padding: 1rem;
+  flex: 1;
+  overflow-y: auto;
+}
+.result-panel h3 {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text2);
+  margin-bottom: 0.65rem;
+}
+.path-empty { font-size: 11px; color: var(--text2); font-style: italic; }
+.path-steps { display: flex; flex-direction: column; }
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 0;
+  position: relative;
+}
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 13px; top: 30px;
+  width: 1px; height: calc(100% - 14px);
+  background: var(--border2);
+}
+.step-dot {
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600;
+  flex-shrink: 0; z-index: 1;
+}
+.step-dot.start  { background: var(--accent);      color: #fff; }
+.step-dot.middle { background: var(--path-color);  color: #0a1a10; }
+.step-dot.end    { background: var(--highlight);   color: #2a200a; }
+.step-dot.only   { background: var(--accent);      color: #fff; }
+
+.step-name { font-size: 12px; font-weight: 500; flex: 1; }
+.step-tag  { font-size: 9px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.08em; }
+
+.summary-bar {
+  margin-top: 1rem;
+  padding: 9px 11px;
+  background: var(--surface2);
+  border-radius: 6px;
+  border-left: 3px solid var(--path-color);
+  font-size: 11px;
+  color: var(--text2);
+}
+.summary-bar strong { color: var(--text); font-weight: 600; }
+
+.no-path-msg {
+  margin-top: 0.4rem;
+  padding: 9px 11px;
+  background: var(--surface2);
+  border-radius: 6px;
+  border-left: 3px solid #e24b4a;
+  font-size: 11px;
+  color: #f09595;
+}
+
+.legend {
+  padding: 0.85rem 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.legend-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text2); margin-bottom: 3px; }
+.legend-item  { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text2); }
+.legend-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+/* Map */
+.map-area { flex: 1; position: relative; overflow: hidden; }
+
+#map {
+  width: 100%; height: 100%;
+}
+
+/* Darken tiles to match dark theme */
+.leaflet-tile-pane { filter: brightness(0.38) saturate(0.35) hue-rotate(195deg); }
+
+.leaflet-control-zoom { display: none; }
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  opacity: 0.35;
+  background: rgba(0,0,0,0.4) !important;
+  color: #888 !important;
+}
+.leaflet-control-attribution a { color: #888 !important; }
+
+/* SVG edge overlay */
+#edge-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 400;
+}
+
+/* Node dots */
+.node-dot {
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.22);
+  background: #2e3450;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, box-shadow 0.18s, transform 0.12s;
+}
+.node-dot:hover { transform: scale(1.35); }
+.node-dot.island {
+  background: #1a1d2e;
+  border-color: rgba(255,255,255,0.1);
+  border-style: dashed;
+}
+.node-dot.state-source { background: #4f8ef7 !important; border-color: #6fa3ff !important; box-shadow: 0 0 0 4px rgba(79,142,247,0.28) !important; }
+.node-dot.state-dest   { background: #f5c842 !important; border-color: #ffd966 !important; box-shadow: 0 0 0 4px rgba(245,200,66,0.25) !important; }
+.node-dot.state-path   { background: #4fc97a !important; border-color: #7adfa3 !important; box-shadow: 0 0 0 3px rgba(79,201,122,0.22) !important; }
+
+/* Labels */
+.node-label-div {
+  position: absolute;
+  pointer-events: none;
+  z-index: 450;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(210,218,240,0.7);
+  text-shadow: 0 1px 4px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.9);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color 0.18s;
+}
+.node-label-div.state-source { color: #a8c4ff; font-weight: 600; }
+.node-label-div.state-dest   { color: #ffd966; font-weight: 600; }
+.node-label-div.state-path   { color: #7adfa3; font-weight: 600; }
+
+.map-hint {
+  position: absolute;
+  bottom: 10px; left: 10px;
+  font-size: 10px;
+  color: var(--text2);
+  background: rgba(24,27,36,0.85);
+  padding: 5px 9px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  z-index: 1000;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🗺</div>
+  <div>
+    <h1>European Border Graph</h1>
+    <p>BFS shortest land path · OpenStreetMap · capital positions</p>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="controls">
+      <div class="control-group">
+        <label>From (source)</label>
+        <select id="fromSelect"></select>
+      </div>
+      <div class="control-group">
+        <label>To (destination)</label>
+        <select id="toSelect"></select>
+      </div>
+      <button class="find-btn" onclick="findPath()">Find Shortest Path →</button>
+      <button class="reset-btn" onclick="resetGraph()">Reset</button>
+    </div>
+
+    <div class="result-panel">
+      <h3>Route</h3>
+      <div id="pathOutput" class="path-empty">Select countries and click "Find Shortest Path"</div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-title">Legend</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7"></div>Start</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f5c842"></div>Destination</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4fc97a"></div>On shortest path</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#2e3450;border:1px solid rgba(255,255,255,0.22)"></div>Other country</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1a1d2e;border:1px dashed rgba(255,255,255,0.1)"></div>Island (no land border)</div>
+    </div>
+  </div>
+
+  <div class="map-area" id="mapArea">
+    <div id="map"></div>
+    <svg id="edge-svg"></svg>
+    <div class="map-hint">Scroll to zoom · Drag to pan · Click a node to set destination</div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* ─────────────────────────────────────────────
+   NODES — capital lat/lng + label pixel offset
+   lx/ly: offset from dot centre in px.
+   Carefully chosen to avoid overlaps at zoom 4.
+───────────────────────────────────────────── */
+const NODES = [
+  // id                             lat      lng     lx    ly
+  { id:"Albania",                  lat:41.330, lng:19.820,  lx:-60,  ly: 12 },
+  { id:"Andorra",                  lat:42.508, lng: 1.521,  lx:  9,  ly:-12 },
+  { id:"Armenia",                  lat:40.183, lng:44.514,  lx:  9,  ly: 12 },
+  { id:"Austria",                  lat:48.208, lng:16.373,  lx:  9,  ly: 12 },
+  { id:"Azerbaijan",               lat:40.409, lng:49.867,  lx:  9,  ly:-12 },
+  { id:"Belgium",                  lat:50.850, lng: 4.351,  lx:  9,  ly:-12 },
+  { id:"Bosnia and Herzegovina",   lat:43.848, lng:18.356,  lx:  9,  ly: 12 },
+  { id:"Bulgaria",                 lat:42.698, lng:23.321,  lx:  9,  ly:-12 },
+  { id:"Croatia",                  lat:45.813, lng:15.977,  lx:  9,  ly: 12 },
+  { id:"Cyprus",                   lat:35.166, lng:33.367,  lx:  9,  ly: 12 },
+  { id:"Czech Republic",           lat:50.075, lng:14.437,  lx:-100, ly:-12 },
+  { id:"Denmark",                  lat:55.676, lng:12.568,  lx:  9,  ly:-12 },
+  { id:"Estonia",                  lat:59.437, lng:24.753,  lx:  9,  ly: 12 },
+  { id:"Finland",                  lat:60.169, lng:24.935,  lx:  9,  ly:-12 },
+  { id:"France",                   lat:48.864, lng: 2.349,  lx:-56,  ly:-12 },
+  { id:"Georgia",                  lat:41.694, lng:44.833,  lx:  9,  ly:-12 },
+  { id:"Germany",                  lat:52.520, lng:13.405,  lx:-76,  ly: 12 },
+  { id:"Greece",                   lat:37.983, lng:23.727,  lx:  9,  ly: 12 },
+  { id:"Hungary",                  lat:47.498, lng:19.040,  lx:  9,  ly: 12 },
+  { id:"Iceland",                  lat:64.128, lng:-21.827, lx:  9,  ly:-12 },
+  { id:"Ireland",                  lat:53.333, lng:-6.249,  lx:  9,  ly: 12 },
+  { id:"Italy",                    lat:41.902, lng:12.496,  lx:-44,  ly: 12 },
+  { id:"Kosovo",                   lat:42.667, lng:21.166,  lx:  9,  ly: 12 },
+  { id:"Latvia",                   lat:56.946, lng:24.105,  lx:  9,  ly:-12 },
+  { id:"Liechtenstein",            lat:47.141, lng: 9.521,  lx:  9,  ly:-12 },
+  { id:"Lithuania",                lat:54.687, lng:25.279,  lx:  9,  ly: 12 },
+  { id:"Luxembourg",               lat:49.611, lng: 6.131,  lx:  9,  ly:  4 },
+  { id:"Malta",                    lat:35.899, lng:14.514,  lx:  9,  ly: 12 },
+  { id:"Moldova",                  lat:47.005, lng:28.857,  lx:  9,  ly:-12 },
+  { id:"Monaco",                   lat:43.731, lng: 7.420,  lx:  9,  ly:-12 },
+  { id:"Montenegro",               lat:42.441, lng:19.263,  lx:-88,  ly: 12 },
+  { id:"Netherlands",              lat:52.374, lng: 4.890,  lx:  9,  ly:-12 },
+  { id:"North Macedonia",          lat:41.996, lng:21.431,  lx:  9,  ly:-12 },
+  { id:"Norway",                   lat:59.913, lng:10.752,  lx:-64,  ly:-12 },
+  { id:"Poland",                   lat:52.229, lng:21.012,  lx:  9,  ly:-12 },
+  { id:"Portugal",                 lat:38.722, lng:-9.139,  lx:-72,  ly:-12 },
+  { id:"Romania",                  lat:44.432, lng:26.103,  lx:  9,  ly: 12 },
+  { id:"San Marino",               lat:43.935, lng:12.463,  lx:  9,  ly: 12 },
+  { id:"Serbia",                   lat:44.804, lng:20.465,  lx:  9,  ly:-12 },
+  { id:"Slovakia",                 lat:48.148, lng:17.107,  lx:  9,  ly:  4 },
+  { id:"Slovenia",                 lat:46.051, lng:14.506,  lx:-68,  ly:-12 },
+  { id:"Spain",                    lat:40.416, lng:-3.703,  lx:-52,  ly:-12 },
+  { id:"Sweden",                   lat:59.330, lng:18.068,  lx:  9,  ly:-12 },
+  { id:"Switzerland",              lat:46.948, lng: 7.448,  lx:-80,  ly:-12 },
+  { id:"Turkey",                   lat:39.933, lng:32.859,  lx:  9,  ly: 12 },
+  { id:"Ukraine",                  lat:50.450, lng:30.523,  lx:  9,  ly:-12 },
+  { id:"United Kingdom",           lat:51.507, lng:-0.128,  lx:-100, ly:-12 },
+  { id:"Vatican City",             lat:41.902, lng:12.453,  lx:  9,  ly: 22 },
+];
+
+const EDGES = [
+  ["Ukraine","Poland"],
+  ["Ukraine","Slovakia"],["Ukraine","Hungary"],["Ukraine","Romania"],
+  ["Ukraine","Moldova"],
+  ["Estonia","Latvia"],["Latvia","Lithuania"],
+  ["Poland","Germany"],["Poland","Czech Republic"],["Poland","Slovakia"],
+  ["Poland","Lithuania"],
+  ["Germany","Czech Republic"],["Germany","Austria"],["Germany","Switzerland"],
+  ["Germany","France"],["Germany","Luxembourg"],["Germany","Belgium"],
+  ["Germany","Netherlands"],["Germany","Denmark"],
+  ["Czech Republic","Austria"],["Czech Republic","Slovakia"],
+  ["Slovakia","Austria"],["Slovakia","Hungary"],
+  ["Austria","Hungary"],["Austria","Switzerland"],["Austria","Liechtenstein"],
+  ["Austria","Italy"],["Austria","Slovenia"],
+  ["Hungary","Romania"],["Hungary","Serbia"],["Hungary","Croatia"],
+  ["Hungary","Slovenia"],
+  ["Romania","Moldova"],["Romania","Bulgaria"],["Romania","Serbia"],
+  ["France","Belgium"],["France","Luxembourg"],["France","Switzerland"],
+  ["France","Italy"],["France","Monaco"],["France","Andorra"],
+  ["France","Spain"],["France","United Kingdom"],
+  ["Belgium","Luxembourg"],["Belgium","Netherlands"],
+  ["Switzerland","Liechtenstein"],["Switzerland","Italy"],
+  ["Spain","Portugal"],["Spain","Andorra"],
+  ["Norway","Sweden"],["Norway","Finland"],["Sweden","Finland"],
+  ["Denmark","Sweden"],
+  ["Italy","San Marino"],["Italy","Vatican City"],["Italy","Slovenia"],
+  ["Italy","Monaco"],
+  ["Slovenia","Croatia"],
+  ["Croatia","Bosnia and Herzegovina"],["Croatia","Serbia"],["Croatia","Montenegro"],
+  ["Bosnia and Herzegovina","Serbia"],["Bosnia and Herzegovina","Montenegro"],
+  ["Serbia","Montenegro"],["Serbia","Kosovo"],["Serbia","North Macedonia"],
+  ["Serbia","Bulgaria"],
+  ["Montenegro","Kosovo"],["Montenegro","Albania"],
+  ["Kosovo","North Macedonia"],["Kosovo","Albania"],
+  ["Albania","North Macedonia"],["Albania","Greece"],
+  ["North Macedonia","Greece"],["North Macedonia","Bulgaria"],
+  ["Greece","Bulgaria"],["Greece","Turkey"],
+  ["Bulgaria","Turkey"],
+  ["Georgia","Armenia"],["Georgia","Azerbaijan"],["Georgia","Turkey"],
+  ["Armenia","Azerbaijan"],["Armenia","Turkey"],["Azerbaijan","Turkey"],
+];
+
+const ISLANDS = new Set(["Malta","Cyprus","Iceland","Ireland"]);
+
+/* BFS */
+const adj = {};
+NODES.forEach(n => adj[n.id] = []);
+EDGES.forEach(([a,b]) => { adj[a].push(b); adj[b].push(a); });
+
+function bfs(src, dst) {
+  if (src === dst) return [src];
+  const parent = {[src]: null};
+  const q = [src];
+  while (q.length) {
+    const cur = q.shift();
+    for (const nb of adj[cur]) {
+      if (!(nb in parent)) {
+        parent[nb] = cur;
+        if (nb === dst) {
+          const path = [];
+          for (let c = dst; c !== null; c = parent[c]) path.unshift(c);
+          return path;
+        }
+        q.push(nb);
+      }
+    }
+  }
+  return [];
+}
+
+const nodeMap = {};
+NODES.forEach(n => nodeMap[n.id] = n);
+
+/* ── Leaflet map ─────────────────────────── */
+const map = L.map('map', {
+  center: [50, 18],
+  zoom: 4,
+  zoomControl: false,
+  attributionControl: true,
+  minZoom: 3,
+  maxZoom: 10,
+});
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19,
+}).addTo(map);
+
+/* ── Edge SVG ────────────────────────────── */
+const edgeSvg = document.getElementById('edge-svg');
+const edgeLines = {};
+
+function buildEdgeSvg() {
+  edgeSvg.innerHTML = '';
+  const seen = new Set();
+  EDGES.forEach(([a,b]) => {
+    const key = a+'|'+b;
+    if (seen.has(key)) return; seen.add(key);
+    const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('stroke','rgba(150,175,220,0.2)');
+    line.setAttribute('stroke-width','1');
+    line.setAttribute('stroke-linecap','round');
+    edgeSvg.appendChild(line);
+    edgeLines[a+'|'+b] = line;
+    edgeLines[b+'|'+a] = line;
+  });
+}
+
+function repositionEdges() {
+  const seen = new Set();
+  EDGES.forEach(([a,b]) => {
+    const key = a+'|'+b;
+    if (seen.has(key)) return; seen.add(key);
+    const na = nodeMap[a], nb = nodeMap[b];
+    const pa = map.latLngToContainerPoint([na.lat, na.lng]);
+    const pb = map.latLngToContainerPoint([nb.lat, nb.lng]);
+    const ln = edgeLines[key];
+    if (!ln) return;
+    ln.setAttribute('x1', pa.x); ln.setAttribute('y1', pa.y);
+    ln.setAttribute('x2', pb.x); ln.setAttribute('y2', pb.y);
+  });
+}
+
+/* ── Dot markers ─────────────────────────── */
+const dotEls  = {};   /* id → div.node-dot */
+const lblEls  = {};   /* id → div.node-label-div */
+const leafletMarkers = {};
+
+const mapArea = document.getElementById('mapArea');
+
+function dotPx() {
+  const z = map.getZoom();
+  if (z <= 3) return 5;
+  if (z <= 4) return 7;
+  if (z <= 5) return 9;
+  if (z <= 6) return 11;
+  return 13;
+}
+
+function makeDotIcon(id, px) {
+  const island = ISLANDS.has(id);
+  return L.divIcon({
+    className: '',
+    html: `<div class="node-dot${island?' island':''}" id="dot-${id.replace(/\s/g,'_')}" style="width:${px}px;height:${px}px"></div>`,
+    iconSize: [px, px],
+    iconAnchor: [px/2, px/2],
+  });
+}
+
+function buildMarkers() {
+  NODES.forEach(n => {
+    const px = dotPx();
+    const marker = L.marker([n.lat, n.lng], {
+      icon: makeDotIcon(n.id, px),
+      zIndexOffset: 200,
+      interactive: true,
+    }).addTo(map);
+
+    marker.on('click', () => {
+      document.getElementById('toSelect').value = n.id;
+    });
+
+    leafletMarkers[n.id] = marker;
+
+    /* label div — parented to mapArea, positioned in JS */
+    const lbl = document.createElement('div');
+    lbl.className = 'node-label-div';
+    lbl.textContent = n.id;
+    mapArea.appendChild(lbl);
+    lblEls[n.id] = lbl;
+  });
+
+  /* cache dot elements after next paint */
+  requestAnimationFrame(() => {
+    NODES.forEach(n => {
+      const el = leafletMarkers[n.id].getElement();
+      if (el) dotEls[n.id] = el.querySelector('.node-dot');
+    });
+    applyStates();
+  });
+}
+
+function repositionLabels() {
+  NODES.forEach(n => {
+    const pt  = map.latLngToContainerPoint([n.lat, n.lng]);
+    const lbl = lblEls[n.id];
+    if (!lbl) return;
+    lbl.style.left = (pt.x + n.lx) + 'px';
+    lbl.style.top  = (pt.y + n.ly) + 'px';
+  });
+}
+
+function rebuildDotSizes() {
+  const px = dotPx();
+  NODES.forEach(n => {
+    leafletMarkers[n.id].setIcon(makeDotIcon(n.id, px));
+  });
+  requestAnimationFrame(() => {
+    NODES.forEach(n => {
+      const el = leafletMarkers[n.id].getElement();
+      if (el) dotEls[n.id] = el.querySelector('.node-dot');
+    });
+    applyStates();
+  });
+}
+
+/* ── State ───────────────────────────────── */
+let currentFrom = 'Ukraine', currentTo = '', currentPath = [];
+
+function applyStates() {
+  const pathSet = new Set(currentPath);
+
+  /* build path edge set */
+  const pathEdgeSet = new Set();
+  for (let i = 0; i < currentPath.length - 1; i++) {
+    pathEdgeSet.add(currentPath[i]+'|'+currentPath[i+1]);
+    pathEdgeSet.add(currentPath[i+1]+'|'+currentPath[i]);
+  }
+
+  NODES.forEach(n => {
+    const dot = dotEls[n.id];
+    const lbl = lblEls[n.id];
+    if (!dot || !lbl) return;
+
+    dot.classList.remove('state-source','state-dest','state-path');
+    lbl.classList.remove('state-source','state-dest','state-path');
+
+    if (n.id === currentFrom) {
+      dot.classList.add('state-source'); lbl.classList.add('state-source');
+    } else if (n.id === currentTo && currentTo) {
+      dot.classList.add('state-dest');   lbl.classList.add('state-dest');
+    } else if (pathSet.has(n.id)) {
+      dot.classList.add('state-path');   lbl.classList.add('state-path');
+    }
+  });
+
+  /* edges */
+  const seen = new Set();
+  EDGES.forEach(([a,b]) => {
+    const key = a+'|'+b;
+    if (seen.has(key)) return; seen.add(key);
+    const ln = edgeLines[key];
+    if (!ln) return;
+    if (pathEdgeSet.has(key)) {
+      ln.setAttribute('stroke','#4fc97a');
+      ln.setAttribute('stroke-width','2.5');
+    } else {
+      ln.setAttribute('stroke','rgba(150,175,220,0.2)');
+      ln.setAttribute('stroke-width','1');
+    }
+  });
+}
+
+/* ── Selects ─────────────────────────────── */
+const fromSelect = document.getElementById('fromSelect');
+const toSelect   = document.getElementById('toSelect');
+
+[...NODES].sort((a,b) => a.id.localeCompare(b.id)).forEach(n => {
+  const o1 = document.createElement('option');
+  o1.value = n.id; o1.textContent = n.id;
+  if (n.id === 'Ukraine') o1.selected = true;
+  fromSelect.appendChild(o1);
+
+  const o2 = document.createElement('option');
+  o2.value = n.id; o2.textContent = n.id;
+  toSelect.appendChild(o2);
+});
+
+fromSelect.addEventListener('change', () => {
+  currentFrom = fromSelect.value;
+  if (currentPath.length) findPath(); else applyStates();
+});
+
+/* ── Path find / reset ───────────────────── */
+function findPath() {
+  currentFrom = fromSelect.value;
+  currentTo   = toSelect.value;
+  if (!currentFrom || !currentTo) return;
+
+  currentPath = bfs(currentFrom, currentTo);
+  applyStates();
+
+  const out = document.getElementById('pathOutput');
+  if (currentPath.length === 0) {
+    out.innerHTML = `<div class="no-path-msg">No land route between <strong>${currentFrom}</strong> and <strong>${currentTo}</strong>.</div>`;
+    return;
+  }
+
+  const steps = currentPath.map((id, i) => {
+    const dc  = currentPath.length===1?'only':i===0?'start':i===currentPath.length-1?'end':'middle';
+    const tag = i===0?'start':i===currentPath.length-1?'dest':'cross';
+    return `<div class="step">
+      <div class="step-dot ${dc}">${dc==='middle'?i:dc==='start'?'S':'D'}</div>
+      <div class="step-name">${id}</div>
+      <div class="step-tag">${tag}</div>
+    </div>`;
+  }).join('');
+
+  const n = currentPath.length - 1;
+  out.innerHTML = `<div class="path-steps">${steps}</div>
+    <div class="summary-bar"><strong>${n}</strong> border crossing${n!==1?'s':''} · ${currentPath.length} countr${currentPath.length!==1?'ies':'y'}</div>`;
+}
+
+function resetGraph() {
+  currentPath = []; currentTo = '';
+  applyStates();
+  document.getElementById('pathOutput').innerHTML = `<span class="path-empty">Select countries and click "Find Shortest Path"</span>`;
+}
+
+/* ── Map events ──────────────────────────── */
+function onMoved() {
+  repositionEdges();
+  repositionLabels();
+}
+
+map.on('move',    onMoved);
+map.on('zoom',    onMoved);
+map.on('zoomend', () => { rebuildDotSizes(); onMoved(); });
+
+/* ── Boot ────────────────────────────────── */
+map.whenReady(() => {
+  buildEdgeSvg();
+  buildMarkers();
+  setTimeout(() => {
+    repositionEdges();
+    repositionLabels();
+  }, 120);
+});
+</script>
+</body>
+</html>
