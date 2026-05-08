@@ -29,9 +29,12 @@ std::vector<std::string> bfs(const Graph& graph, const std::string& start, const
       parent[next] = current;
       if (next == target) {
         std::vector<std::string> path;
-        for (std::string node = target;; node = parent[node]) {
+        std::string node = target;
+        while (true) {
           path.push_back(node);
           if (node == start) break;
+          if (!parent.count(node)) return {};
+          node = parent[node];
         }
         std::reverse(path.begin(), path.end());
         return path;
@@ -68,7 +71,8 @@ int main() {
 
   std::cout << "Shortest path from " << from << " to " << to << ":\n";
   for (std::size_t i = 0; i < path.size(); ++i) {
-    std::cout << path[i];
+    const std::string& node = path[i];
+    std::cout << node;
     if (i + 1 < path.size()) std::cout << " -> ";
   }
   std::cout << '\n';
