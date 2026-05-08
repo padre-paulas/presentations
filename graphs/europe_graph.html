@@ -210,14 +210,12 @@ select:focus { outline: none; border-color: var(--accent); }
 .legend-item  { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text2); }
 .legend-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
-/* Map */
 .map-area { flex: 1; position: relative; overflow: hidden; }
 
 #map {
   width: 100%; height: 100%;
 }
 
-/* Darken tiles to match dark theme */
 .leaflet-tile-pane { filter: brightness(0.38) saturate(0.35) hue-rotate(195deg); }
 
 .leaflet-control-zoom { display: none; }
@@ -229,7 +227,6 @@ select:focus { outline: none; border-color: var(--accent); }
 }
 .leaflet-control-attribution a { color: #888 !important; }
 
-/* SVG edge overlay */
 #edge-svg {
   position: absolute;
   top: 0; left: 0;
@@ -238,7 +235,6 @@ select:focus { outline: none; border-color: var(--accent); }
   z-index: 400;
 }
 
-/* Node dots */
 .node-dot {
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.22);
@@ -259,7 +255,6 @@ select:focus { outline: none; border-color: var(--accent); }
 .node-dot.state-frontier { background: #6f7ca8 !important; border-color: #b9c8f4 !important; box-shadow: 0 0 0 3px rgba(185,200,244,0.22) !important; }
 .node-dot.state-current { background: #ff8a65 !important; border-color: #ffae98 !important; box-shadow: 0 0 0 4px rgba(255,138,101,0.3) !important; transform: scale(1.2); }
 
-/* Labels */
 .node-label-div {
   position: absolute;
   pointer-events: none;
@@ -347,13 +342,7 @@ select:focus { outline: none; border-color: var(--accent); }
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ─────────────────────────────────────────────
-   NODES — capital lat/lng + label pixel offset
-   lx/ly: offset from dot centre in px.
-   Carefully chosen to avoid overlaps at zoom 4.
-───────────────────────────────────────────── */
 const NODES = [
-  // id                             lat      lng     lx    ly
   { id:"Albania",                  lat:41.330, lng:19.820,  lx:-60,  ly: 12 },
   { id:"Andorra",                  lat:42.508, lng: 1.521,  lx:  9,  ly:-12 },
   { id:"Armenia",                  lat:40.183, lng:44.514,  lx:  9,  ly: 12 },
@@ -448,7 +437,6 @@ const EDGES = [
 
 const ISLANDS = new Set(["Malta","Cyprus","Iceland","Ireland"]);
 
-/* BFS */
 const adj = {};
 NODES.forEach(n => adj[n.id] = []);
 EDGES.forEach(([a,b]) => { adj[a].push(b); adj[b].push(a); });
@@ -493,7 +481,6 @@ function bfsWithTrace(src, dst) {
 const nodeMap = {};
 NODES.forEach(n => nodeMap[n.id] = n);
 
-/* ── Leaflet map ─────────────────────────── */
 const map = L.map('map', {
   center: [50, 18],
   zoom: 4,
@@ -508,7 +495,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
 }).addTo(map);
 
-/* ── Edge SVG ────────────────────────────── */
 const edgeSvg = document.getElementById('edge-svg');
 const edgeLines = {};
 const EDGE_STYLE = {
@@ -554,9 +540,8 @@ function repositionEdges() {
   });
 }
 
-/* ── Dot markers ─────────────────────────── */
-const dotEls  = {};   /* id → div.node-dot */
-const lblEls  = {};   /* id → div.node-label-div */
+const dotEls  = {};
+const lblEls  = {};
 const leafletMarkers = {};
 
 const mapArea = document.getElementById('mapArea');
@@ -595,7 +580,6 @@ function buildMarkers() {
 
     leafletMarkers[n.id] = marker;
 
-    /* label div — parented to mapArea, positioned in JS */
     const lbl = document.createElement('div');
     lbl.className = 'node-label-div';
     lbl.textContent = n.id;
@@ -603,7 +587,6 @@ function buildMarkers() {
     lblEls[n.id] = lbl;
   });
 
-  /* cache dot elements after next paint */
   requestAnimationFrame(() => {
     NODES.forEach(n => {
       const el = leafletMarkers[n.id].getElement();
@@ -684,7 +667,6 @@ function rebuildDotSizes() {
   });
 }
 
-/* ── State ───────────────────────────────── */
 let currentFrom = 'Ukraine', currentTo = '', currentPath = [];
 let bfsVisited = new Set();
 let bfsFrontier = new Set();
@@ -731,7 +713,6 @@ function setFindButtonIdle() {
 function applyStates() {
   const pathSet = new Set(currentPath);
 
-  /* build path edge set */
   const pathEdgeSet = new Set();
   for (let i = 0; i < currentPath.length - 1; i++) {
     pathEdgeSet.add(currentPath[i]+'|'+currentPath[i+1]);
@@ -761,7 +742,6 @@ function applyStates() {
     }
   });
 
-  /* edges */
   const seen = new Set();
   EDGES.forEach(([a,b]) => {
     const key = a+'|'+b;
@@ -782,7 +762,6 @@ function applyStates() {
   repositionLabels();
 }
 
-/* ── Selects ─────────────────────────────── */
 const fromSelect = document.getElementById('fromSelect');
 const toSelect   = document.getElementById('toSelect');
 const findBtn = document.getElementById('findBtn');
@@ -819,7 +798,6 @@ toSelect.addEventListener('change', () => {
   applyStates();
 });
 
-/* ── Path find / reset ───────────────────── */
 async function animateBfs(trace, token) {
   resetTraversalState();
   for (const step of trace) {
@@ -933,7 +911,6 @@ findBtn.addEventListener('click', () => {
 
 resetBtn.addEventListener('click', resetGraph);
 
-/* ── Map events ──────────────────────────── */
 function onMoved() {
   repositionEdges();
   repositionLabels();
@@ -943,7 +920,6 @@ map.on('move',    onMoved);
 map.on('zoom',    onMoved);
 map.on('zoomend', () => { rebuildDotSizes(); onMoved(); });
 
-/* ── Boot ────────────────────────────────── */
 map.whenReady(() => {
   buildEdgeSvg();
   buildMarkers();
