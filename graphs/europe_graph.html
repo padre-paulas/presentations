@@ -317,8 +317,8 @@ select:focus { outline: none; border-color: var(--accent); }
         <label>To (destination)</label>
         <select id="toSelect"></select>
       </div>
-      <button id="findBtn" class="find-btn" onclick="findPath()">Find Shortest Path →</button>
-      <button id="resetBtn" class="reset-btn" onclick="resetGraph()">Reset</button>
+      <button id="findBtn" class="find-btn">Find Shortest Path →</button>
+      <button id="resetBtn" class="reset-btn">Reset</button>
     </div>
 
     <div class="result-panel">
@@ -624,9 +624,9 @@ const DEFAULT_LABEL_HEIGHT_PX = 12;
 
 function overlaps(rect1, rect2, collisionPaddingPx = 3) {
   return !(
-    rect1.right + collisionPaddingPx < rect2.left ||
+    rect1.right < rect2.left - collisionPaddingPx ||
     rect1.left > rect2.right + collisionPaddingPx ||
-    rect1.bottom + collisionPaddingPx < rect2.top ||
+    rect1.bottom < rect2.top - collisionPaddingPx ||
     rect1.top > rect2.bottom + collisionPaddingPx
   );
 }
@@ -694,6 +694,7 @@ let bfsActiveEdges = new Set();
 let animationToken = 0;
 
 const BFS_STEP_DURATION_MS = 230;
+const PATH_STEP_DURATION_MS = BFS_STEP_DURATION_MS;
 const EDGE_PULSE_DURATION_MS = 130;
 const EDGE_POST_PULSE_DURATION_MS = BFS_STEP_DURATION_MS - EDGE_PULSE_DURATION_MS;
 
@@ -774,6 +775,8 @@ function applyStates() {
 /* ── Selects ─────────────────────────────── */
 const fromSelect = document.getElementById('fromSelect');
 const toSelect   = document.getElementById('toSelect');
+const findBtn = document.getElementById('findBtn');
+const resetBtn = document.getElementById('resetBtn');
 
 [...NODES].sort((a,b) => a.id.localeCompare(b.id)).forEach(n => {
   const o1 = document.createElement('option');
@@ -842,7 +845,7 @@ async function animatePath(path, token) {
     if (token !== animationToken) return false;
     currentPath = path.slice(0, i + 1);
     applyStates();
-    await sleep(BFS_STEP_DURATION_MS);
+    await sleep(PATH_STEP_DURATION_MS);
   }
   return token === animationToken;
 }
@@ -854,7 +857,6 @@ async function findPath() {
   if (!currentFrom || !currentTo) return;
 
   const out = document.getElementById('pathOutput');
-  const findBtn = document.getElementById('findBtn');
   findBtn.textContent = 'Animating BFS...';
   findBtn.disabled = true;
   setPathOutputStatus(out, `Running BFS from <strong>${currentFrom}</strong> to <strong>${currentTo}</strong>...`);
@@ -917,10 +919,15 @@ function resetGraph() {
   toSelect.value = '';
   applyStates();
   document.getElementById('pathOutput').innerHTML = `<span class="path-empty">Select countries and click "Find Shortest Path"</span>`;
-  const findBtn = document.getElementById('findBtn');
   findBtn.disabled = false;
   findBtn.textContent = 'Find Shortest Path →';
 }
+
+findBtn.addEventListener('click', () => {
+  findPath();
+});
+
+resetBtn.addEventListener('click', resetGraph);
 
 /* ── Map events ──────────────────────────── */
 function onMoved() {
