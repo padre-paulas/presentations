@@ -1,0 +1,8 @@
+{
+  // "workbench.colorCustomizations": {
+  //   "sideBar.background": "#2E0014",
+  //   "editor.background": "#2E0014",
+  //   "panel.background": "#2E0014"
+  // }
+  "C_Cpp.clangFormatStyle": "Google"
+}
