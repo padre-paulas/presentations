@@ -619,13 +619,15 @@ const LABEL_SHIFT_CANDIDATES = [
   [30, -14], [-30, -14], [30, 14], [-30, 14],
   [40, 0], [-40, 0], [0, -30], [0, 30]
 ];
+const DEFAULT_LABEL_WIDTH_PX = 40;
+const DEFAULT_LABEL_HEIGHT_PX = 12;
 
-function overlaps(a, b, pad = 3) {
+function overlaps(a, b, collisionPaddingPx = 3) {
   return !(
-    a.right + pad < b.left ||
-    a.left > b.right + pad ||
-    a.bottom + pad < b.top ||
-    a.top > b.bottom + pad
+    a.right + collisionPaddingPx < b.left ||
+    a.left > b.right + collisionPaddingPx ||
+    a.bottom + collisionPaddingPx < b.top ||
+    a.top > b.bottom + collisionPaddingPx
   );
 }
 
@@ -633,9 +635,9 @@ function repositionLabels() {
   const placed = [];
   const routePriority = new Set([currentFrom, currentTo, ...currentPath]);
   const order = [...NODES].sort((a, b) => {
-    const ap = routePriority.has(a.id) ? 1 : 0;
-    const bp = routePriority.has(b.id) ? 1 : 0;
-    if (ap !== bp) return bp - ap;
+    const aPriority = routePriority.has(a.id) ? 1 : 0;
+    const bPriority = routePriority.has(b.id) ? 1 : 0;
+    if (aPriority !== bPriority) return bPriority - aPriority;
     return a.id.localeCompare(b.id);
   });
 
@@ -644,13 +646,13 @@ function repositionLabels() {
     const lbl = lblEls[n.id];
     if (!lbl) return;
 
-    const w = lbl.offsetWidth || 40;
-    const h = lbl.offsetHeight || 12;
+    const w = lbl.offsetWidth || DEFAULT_LABEL_WIDTH_PX;
+    const h = lbl.offsetHeight || DEFAULT_LABEL_HEIGHT_PX;
     let chosen = null;
 
-    for (const [sx, sy] of LABEL_SHIFT_CANDIDATES) {
-      const x = pt.x + n.lx + sx;
-      const y = pt.y + n.ly + sy;
+    for (const [shiftX, shiftY] of LABEL_SHIFT_CANDIDATES) {
+      const x = pt.x + n.lx + shiftX;
+      const y = pt.y + n.ly + shiftY;
       const rect = { left: x, top: y, right: x + w, bottom: y + h };
       if (!placed.some(p => overlaps(rect, p))) {
         chosen = rect;
@@ -691,8 +693,9 @@ let bfsTraversedEdges = new Set();
 let bfsActiveEdges = new Set();
 let animationToken = 0;
 
-const STEP_DELAY_MS = 230;
-const EDGE_PULSE_DELAY_MS = 130;
+const BFS_STEP_ANIMATION_DELAY_MS = 230;
+const EDGE_HIGHLIGHT_PULSE_DELAY_MS = 130;
+const EDGE_POST_PULSE_DELAY_MS = BFS_STEP_ANIMATION_DELAY_MS - EDGE_HIGHLIGHT_PULSE_DELAY_MS;
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -810,7 +813,7 @@ async function animateBfs(trace, token) {
       bfsVisited.add(step.node);
       bfsFrontier = new Set(step.frontier);
       applyStates();
-      await sleep(STEP_DELAY_MS);
+      await sleep(BFS_STEP_ANIMATION_DELAY_MS);
     } else if (step.type === 'discover') {
       const e1 = `${step.from}|${step.to}`;
       const e2 = `${step.to}|${step.from}`;
@@ -819,10 +822,10 @@ async function animateBfs(trace, token) {
       bfsTraversedEdges.add(e2);
       bfsFrontier = new Set(step.frontier);
       applyStates();
-      await sleep(EDGE_PULSE_DELAY_MS);
+      await sleep(EDGE_HIGHLIGHT_PULSE_DELAY_MS);
       bfsActiveEdges = new Set();
       applyStates();
-      await sleep(STEP_DELAY_MS - EDGE_PULSE_DELAY_MS);
+      await sleep(EDGE_POST_PULSE_DELAY_MS);
     }
   }
   return token === animationToken;
@@ -835,7 +838,7 @@ async function animatePath(path, token) {
     if (token !== animationToken) return false;
     currentPath = path.slice(0, i + 1);
     applyStates();
-    await sleep(STEP_DELAY_MS);
+    await sleep(BFS_STEP_ANIMATION_DELAY_MS);
   }
   return token === animationToken;
 }
@@ -848,7 +851,7 @@ async function findPath() {
 
   const out = document.getElementById('pathOutput');
   const findBtn = document.getElementById('findBtn');
-  findBtn.textContent = 'Animating BFS…';
+  findBtn.textContent = 'Animating BFS...';
   findBtn.disabled = true;
   out.innerHTML = `<div class="path-empty">Running BFS from <strong>${currentFrom}</strong> to <strong>${currentTo}</strong>…</div>`;
 
