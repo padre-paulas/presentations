@@ -210,14 +210,12 @@ select:focus { outline: none; border-color: var(--accent); }
 .legend-item  { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text2); }
 .legend-dot   { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
-/* Map */
 .map-area { flex: 1; position: relative; overflow: hidden; }
 
 #map {
   width: 100%; height: 100%;
 }
 
-/* Darken tiles to match dark theme */
 .leaflet-tile-pane { filter: brightness(0.38) saturate(0.35) hue-rotate(195deg); }
 
 .leaflet-control-zoom { display: none; }
@@ -229,7 +227,6 @@ select:focus { outline: none; border-color: var(--accent); }
 }
 .leaflet-control-attribution a { color: #888 !important; }
 
-/* SVG edge overlay */
 #edge-svg {
   position: absolute;
   top: 0; left: 0;
@@ -238,7 +235,6 @@ select:focus { outline: none; border-color: var(--accent); }
   z-index: 400;
 }
 
-/* Node dots */
 .node-dot {
   border-radius: 50%;
   border: 2px solid rgba(255,255,255,0.22);
@@ -255,8 +251,10 @@ select:focus { outline: none; border-color: var(--accent); }
 .node-dot.state-source { background: #4f8ef7 !important; border-color: #6fa3ff !important; box-shadow: 0 0 0 4px rgba(79,142,247,0.28) !important; }
 .node-dot.state-dest   { background: #f5c842 !important; border-color: #ffd966 !important; box-shadow: 0 0 0 4px rgba(245,200,66,0.25) !important; }
 .node-dot.state-path   { background: #4fc97a !important; border-color: #7adfa3 !important; box-shadow: 0 0 0 3px rgba(79,201,122,0.22) !important; }
+.node-dot.state-visited { background: #3b4261 !important; border-color: rgba(170,188,230,0.65) !important; box-shadow: 0 0 0 2px rgba(120,145,210,0.2) !important; }
+.node-dot.state-frontier { background: #6f7ca8 !important; border-color: #b9c8f4 !important; box-shadow: 0 0 0 3px rgba(185,200,244,0.22) !important; }
+.node-dot.state-current { background: #ff8a65 !important; border-color: #ffae98 !important; box-shadow: 0 0 0 4px rgba(255,138,101,0.3) !important; transform: scale(1.2); }
 
-/* Labels */
 .node-label-div {
   position: absolute;
   pointer-events: none;
@@ -274,6 +272,9 @@ select:focus { outline: none; border-color: var(--accent); }
 .node-label-div.state-source { color: #a8c4ff; font-weight: 600; }
 .node-label-div.state-dest   { color: #ffd966; font-weight: 600; }
 .node-label-div.state-path   { color: #7adfa3; font-weight: 600; }
+.node-label-div.state-visited { color: #aeb8d8; font-weight: 600; }
+.node-label-div.state-frontier { color: #d5dcf7; font-weight: 600; }
+.node-label-div.state-current { color: #ffc3b2; font-weight: 700; }
 
 .map-hint {
   position: absolute;
@@ -311,8 +312,8 @@ select:focus { outline: none; border-color: var(--accent); }
         <label>To (destination)</label>
         <select id="toSelect"></select>
       </div>
-      <button class="find-btn" onclick="findPath()">Find Shortest Path →</button>
-      <button class="reset-btn" onclick="resetGraph()">Reset</button>
+      <button id="findBtn" class="find-btn">Find Shortest Path →</button>
+      <button id="resetBtn" class="reset-btn">Reset</button>
     </div>
 
     <div class="result-panel">
@@ -325,6 +326,8 @@ select:focus { outline: none; border-color: var(--accent); }
       <div class="legend-item"><div class="legend-dot" style="background:#4f8ef7"></div>Start</div>
       <div class="legend-item"><div class="legend-dot" style="background:#f5c842"></div>Destination</div>
       <div class="legend-item"><div class="legend-dot" style="background:#4fc97a"></div>On shortest path</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff8a65"></div>Current BFS node</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6f7ca8"></div>BFS frontier</div>
       <div class="legend-item"><div class="legend-dot" style="background:#2e3450;border:1px solid rgba(255,255,255,0.22)"></div>Other country</div>
       <div class="legend-item"><div class="legend-dot" style="background:#1a1d2e;border:1px dashed rgba(255,255,255,0.1)"></div>Island (no land border)</div>
     </div>
@@ -339,13 +342,7 @@ select:focus { outline: none; border-color: var(--accent); }
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-/* ─────────────────────────────────────────────
-   NODES — capital lat/lng + label pixel offset
-   lx/ly: offset from dot centre in px.
-   Carefully chosen to avoid overlaps at zoom 4.
-───────────────────────────────────────────── */
 const NODES = [
-  // id                             lat      lng     lx    ly
   { id:"Albania",                  lat:41.330, lng:19.820,  lx:-60,  ly: 12 },
   { id:"Andorra",                  lat:42.508, lng: 1.521,  lx:  9,  ly:-12 },
   { id:"Armenia",                  lat:40.183, lng:44.514,  lx:  9,  ly: 12 },
@@ -440,36 +437,50 @@ const EDGES = [
 
 const ISLANDS = new Set(["Malta","Cyprus","Iceland","Ireland"]);
 
-/* BFS */
 const adj = {};
 NODES.forEach(n => adj[n.id] = []);
 EDGES.forEach(([a,b]) => { adj[a].push(b); adj[b].push(a); });
 
-function bfs(src, dst) {
-  if (src === dst) return [src];
-  const parent = {[src]: null};
+function bfsWithTrace(src, dst) {
+  if (src === dst) {
+    return {
+      path: [src],
+      trace: [{ type: 'dequeue', node: src, frontier: [] }]
+    };
+  }
+
+  const parent = { [src]: null };
   const q = [src];
-  while (q.length) {
+  const trace = [];
+  let found = false;
+
+  while (q.length && !found) {
     const cur = q.shift();
+    trace.push({ type: 'dequeue', node: cur, frontier: [...q] });
+
     for (const nb of adj[cur]) {
       if (!(nb in parent)) {
         parent[nb] = cur;
-        if (nb === dst) {
-          const path = [];
-          for (let c = dst; c !== null; c = parent[c]) path.unshift(c);
-          return path;
-        }
         q.push(nb);
+        trace.push({ type: 'discover', from: cur, to: nb, node: nb, frontier: [...q] });
+        if (nb === dst) {
+          found = true;
+          break;
+        }
       }
     }
   }
-  return [];
+
+  if (!found) return { path: [], trace };
+
+  const path = [];
+  for (let c = dst; c !== null; c = parent[c]) path.unshift(c);
+  return { path, trace };
 }
 
 const nodeMap = {};
 NODES.forEach(n => nodeMap[n.id] = n);
 
-/* ── Leaflet map ─────────────────────────── */
 const map = L.map('map', {
   center: [50, 18],
   zoom: 4,
@@ -484,9 +495,19 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 19,
 }).addTo(map);
 
-/* ── Edge SVG ────────────────────────────── */
 const edgeSvg = document.getElementById('edge-svg');
 const edgeLines = {};
+const EDGE_STYLE = {
+  base:      { stroke: 'rgba(164,188,236,0.42)', width: 1.8 },
+  traversed: { stroke: 'rgba(130,166,232,0.82)', width: 2.4 },
+  active:    { stroke: '#ff9c7e', width: 3.1 },
+  path:      { stroke: '#4fc97a', width: 3.2 },
+};
+
+function setEdgeStyle(line, style) {
+  line.setAttribute('stroke', style.stroke);
+  line.setAttribute('stroke-width', style.width);
+}
 
 function buildEdgeSvg() {
   edgeSvg.innerHTML = '';
@@ -495,9 +516,9 @@ function buildEdgeSvg() {
     const key = a+'|'+b;
     if (seen.has(key)) return; seen.add(key);
     const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-    line.setAttribute('stroke','rgba(150,175,220,0.2)');
-    line.setAttribute('stroke-width','1');
+    setEdgeStyle(line, EDGE_STYLE.base);
     line.setAttribute('stroke-linecap','round');
+    line.style.transition = 'stroke 180ms ease, stroke-width 180ms ease';
     edgeSvg.appendChild(line);
     edgeLines[a+'|'+b] = line;
     edgeLines[b+'|'+a] = line;
@@ -519,9 +540,8 @@ function repositionEdges() {
   });
 }
 
-/* ── Dot markers ─────────────────────────── */
-const dotEls  = {};   /* id → div.node-dot */
-const lblEls  = {};   /* id → div.node-label-div */
+const dotEls  = {};
+const lblEls  = {};
 const leafletMarkers = {};
 
 const mapArea = document.getElementById('mapArea');
@@ -560,7 +580,6 @@ function buildMarkers() {
 
     leafletMarkers[n.id] = marker;
 
-    /* label div — parented to mapArea, positioned in JS */
     const lbl = document.createElement('div');
     lbl.className = 'node-label-div';
     lbl.textContent = n.id;
@@ -568,7 +587,6 @@ function buildMarkers() {
     lblEls[n.id] = lbl;
   });
 
-  /* cache dot elements after next paint */
   requestAnimationFrame(() => {
     NODES.forEach(n => {
       const el = leafletMarkers[n.id].getElement();
@@ -578,13 +596,60 @@ function buildMarkers() {
   });
 }
 
+const LABEL_SHIFT_CANDIDATES = [
+  [0, 0], [12, -12], [-12, -12], [12, 12], [-12, 12],
+  [22, 0], [-22, 0], [0, -20], [0, 20],
+  [30, -14], [-30, -14], [30, 14], [-30, 14],
+  [40, 0], [-40, 0], [0, -30], [0, 30]
+];
+const DEFAULT_LABEL_WIDTH_PX = 40;
+const DEFAULT_LABEL_HEIGHT_PX = 12;
+
+function overlaps(rect1, rect2, collisionPadding = 3) {
+  return !(
+    rect1.right < rect2.left - collisionPadding ||
+    rect1.left > rect2.right + collisionPadding ||
+    rect1.bottom < rect2.top - collisionPadding ||
+    rect1.top > rect2.bottom + collisionPadding
+  );
+}
+
 function repositionLabels() {
-  NODES.forEach(n => {
-    const pt  = map.latLngToContainerPoint([n.lat, n.lng]);
+  const placed = [];
+  const routePriority = new Set([currentFrom, currentTo, ...currentPath]);
+  const labelPlacementOrder = [...NODES].sort((a, b) => {
+    const aPriority = routePriority.has(a.id) ? 1 : 0;
+    const bPriority = routePriority.has(b.id) ? 1 : 0;
+    if (aPriority !== bPriority) return bPriority - aPriority;
+    return a.id.localeCompare(b.id);
+  });
+
+  labelPlacementOrder.forEach(n => {
+    const pt = map.latLngToContainerPoint([n.lat, n.lng]);
     const lbl = lblEls[n.id];
     if (!lbl) return;
-    lbl.style.left = (pt.x + n.lx) + 'px';
-    lbl.style.top  = (pt.y + n.ly) + 'px';
+
+    const labelWidth = lbl.offsetWidth || DEFAULT_LABEL_WIDTH_PX;
+    const labelHeight = lbl.offsetHeight || DEFAULT_LABEL_HEIGHT_PX;
+    let chosen = null;
+
+    for (const [shiftX, shiftY] of LABEL_SHIFT_CANDIDATES) {
+      const x = pt.x + n.lx + shiftX;
+      const y = pt.y + n.ly + shiftY;
+      const rect = { left: x, top: y, right: x + labelWidth, bottom: y + labelHeight };
+      if (!placed.some(p => overlaps(rect, p))) {
+        chosen = rect;
+        break;
+      }
+    }
+
+    if (!chosen) {
+      chosen = { left: pt.x + n.lx, top: pt.y + n.ly, right: pt.x + n.lx + labelWidth, bottom: pt.y + n.ly + labelHeight };
+    }
+
+    lbl.style.left = `${chosen.left}px`;
+    lbl.style.top = `${chosen.top}px`;
+    placed.push(chosen);
   });
 }
 
@@ -602,13 +667,52 @@ function rebuildDotSizes() {
   });
 }
 
-/* ── State ───────────────────────────────── */
 let currentFrom = 'Ukraine', currentTo = '', currentPath = [];
+let bfsVisited = new Set();
+let bfsFrontier = new Set();
+let bfsCurrent = '';
+let bfsTraversedEdges = new Set();
+let bfsActiveEdges = new Set();
+let animationToken = 0;
+
+const BFS_STEP_DURATION_MS = 230;
+const PATH_STEP_DURATION_MS = BFS_STEP_DURATION_MS;
+const EDGE_PULSE_DURATION_MS = 130;
+const EDGE_POST_PULSE_DURATION_MS = BFS_STEP_DURATION_MS - EDGE_PULSE_DURATION_MS;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function cancelAnimation() {
+  animationToken++;
+}
+
+function resetTraversalState() {
+  bfsVisited = new Set();
+  bfsFrontier = new Set();
+  bfsCurrent = '';
+  bfsTraversedEdges = new Set();
+  bfsActiveEdges = new Set();
+}
+
+function setPathOutputStatus(out, messageHtml, isError = false) {
+  out.innerHTML = `<div class="${isError ? 'no-path-msg' : 'path-empty'}">${messageHtml}</div>`;
+}
+
+function setFindButtonBusy() {
+  findBtn.textContent = 'Searching...';
+  findBtn.disabled = true;
+}
+
+function setFindButtonIdle() {
+  findBtn.textContent = 'Find Shortest Path →';
+  findBtn.disabled = false;
+}
 
 function applyStates() {
   const pathSet = new Set(currentPath);
 
-  /* build path edge set */
   const pathEdgeSet = new Set();
   for (let i = 0; i < currentPath.length - 1; i++) {
     pathEdgeSet.add(currentPath[i]+'|'+currentPath[i+1]);
@@ -620,8 +724,8 @@ function applyStates() {
     const lbl = lblEls[n.id];
     if (!dot || !lbl) return;
 
-    dot.classList.remove('state-source','state-dest','state-path');
-    lbl.classList.remove('state-source','state-dest','state-path');
+    dot.classList.remove('state-source','state-dest','state-path','state-visited','state-frontier','state-current');
+    lbl.classList.remove('state-source','state-dest','state-path','state-visited','state-frontier','state-current');
 
     if (n.id === currentFrom) {
       dot.classList.add('state-source'); lbl.classList.add('state-source');
@@ -629,10 +733,15 @@ function applyStates() {
       dot.classList.add('state-dest');   lbl.classList.add('state-dest');
     } else if (pathSet.has(n.id)) {
       dot.classList.add('state-path');   lbl.classList.add('state-path');
+    } else if (n.id === bfsCurrent) {
+      dot.classList.add('state-current'); lbl.classList.add('state-current');
+    } else if (bfsFrontier.has(n.id)) {
+      dot.classList.add('state-frontier'); lbl.classList.add('state-frontier');
+    } else if (bfsVisited.has(n.id)) {
+      dot.classList.add('state-visited'); lbl.classList.add('state-visited');
     }
   });
 
-  /* edges */
   const seen = new Set();
   EDGES.forEach(([a,b]) => {
     const key = a+'|'+b;
@@ -640,18 +749,23 @@ function applyStates() {
     const ln = edgeLines[key];
     if (!ln) return;
     if (pathEdgeSet.has(key)) {
-      ln.setAttribute('stroke','#4fc97a');
-      ln.setAttribute('stroke-width','2.5');
+      setEdgeStyle(ln, EDGE_STYLE.path);
+    } else if (bfsActiveEdges.has(key)) {
+      setEdgeStyle(ln, EDGE_STYLE.active);
+    } else if (bfsTraversedEdges.has(key)) {
+      setEdgeStyle(ln, EDGE_STYLE.traversed);
     } else {
-      ln.setAttribute('stroke','rgba(150,175,220,0.2)');
-      ln.setAttribute('stroke-width','1');
+      setEdgeStyle(ln, EDGE_STYLE.base);
     }
   });
+
+  repositionLabels();
 }
 
-/* ── Selects ─────────────────────────────── */
 const fromSelect = document.getElementById('fromSelect');
 const toSelect   = document.getElementById('toSelect');
+const findBtn = document.getElementById('findBtn');
+const resetBtn = document.getElementById('resetBtn');
 
 [...NODES].sort((a,b) => a.id.localeCompare(b.id)).forEach(n => {
   const o1 = document.createElement('option');
@@ -665,22 +779,103 @@ const toSelect   = document.getElementById('toSelect');
 });
 
 fromSelect.addEventListener('change', () => {
+  cancelAnimation();
+  resetTraversalState();
   currentFrom = fromSelect.value;
-  if (currentPath.length) findPath(); else applyStates();
+  if (currentTo) {
+    void findPath();
+  } else {
+    currentPath = [];
+    applyStates();
+  }
 });
 
-/* ── Path find / reset ───────────────────── */
-function findPath() {
+toSelect.addEventListener('change', () => {
+  cancelAnimation();
+  resetTraversalState();
+  currentTo = toSelect.value;
+  currentPath = [];
+  applyStates();
+});
+
+async function animateBfs(trace, token) {
+  resetTraversalState();
+  for (const step of trace) {
+    if (token !== animationToken) return false;
+
+    if (step.type === 'dequeue') {
+      bfsCurrent = step.node;
+      bfsVisited.add(step.node);
+      bfsFrontier = new Set(step.frontier);
+      applyStates();
+      await sleep(BFS_STEP_DURATION_MS);
+    } else if (step.type === 'discover') {
+      const e1 = `${step.from}|${step.to}`;
+      const e2 = `${step.to}|${step.from}`;
+      bfsActiveEdges = new Set([e1, e2]);
+      bfsTraversedEdges.add(e1);
+      bfsTraversedEdges.add(e2);
+      bfsFrontier = new Set(step.frontier);
+      applyStates();
+      await sleep(EDGE_PULSE_DURATION_MS);
+      bfsActiveEdges = new Set();
+      applyStates();
+      await sleep(EDGE_POST_PULSE_DURATION_MS);
+    }
+  }
+  return token === animationToken;
+}
+
+async function animatePath(path, token) {
+  currentPath = [];
+  applyStates();
+  for (let i = 0; i < path.length; i++) {
+    if (token !== animationToken) return false;
+    currentPath = path.slice(0, i + 1);
+    applyStates();
+    await sleep(PATH_STEP_DURATION_MS);
+  }
+  return token === animationToken;
+}
+
+async function findPath() {
+  const token = ++animationToken;
   currentFrom = fromSelect.value;
   currentTo   = toSelect.value;
   if (!currentFrom || !currentTo) return;
 
-  currentPath = bfs(currentFrom, currentTo);
+  const out = document.getElementById('pathOutput');
+  setFindButtonBusy();
+  setPathOutputStatus(out, `Running BFS from <strong>${currentFrom}</strong> to <strong>${currentTo}</strong>...`);
+
+  const { path, trace } = bfsWithTrace(currentFrom, currentTo);
+  currentPath = [];
+  const traversalCompleted = await animateBfs(trace, token);
+  if (!traversalCompleted) {
+    setFindButtonIdle();
+    return;
+  }
+
+  if (path.length) {
+    bfsCurrent = '';
+    bfsFrontier = new Set();
+    const pathCompleted = await animatePath(path, token);
+    if (!pathCompleted) {
+      setFindButtonIdle();
+      return;
+    }
+  } else {
+    currentPath = [];
+    applyStates();
+  }
+
+  resetTraversalState();
+  currentPath = path;
   applyStates();
 
-  const out = document.getElementById('pathOutput');
   if (currentPath.length === 0) {
-    out.innerHTML = `<div class="no-path-msg">No land route between <strong>${currentFrom}</strong> and <strong>${currentTo}</strong>.</div>`;
+    setPathOutputStatus(out, `No land route between <strong>${currentFrom}</strong> and <strong>${currentTo}</strong>.`, true);
+    setFindButtonIdle();
     return;
   }
 
@@ -697,15 +892,28 @@ function findPath() {
   const n = currentPath.length - 1;
   out.innerHTML = `<div class="path-steps">${steps}</div>
     <div class="summary-bar"><strong>${n}</strong> border crossing${n!==1?'s':''} · ${currentPath.length} countr${currentPath.length!==1?'ies':'y'}</div>`;
+  setFindButtonIdle();
 }
 
 function resetGraph() {
+  cancelAnimation();
+  resetTraversalState();
   currentPath = []; currentTo = '';
+  toSelect.value = '';
   applyStates();
   document.getElementById('pathOutput').innerHTML = `<span class="path-empty">Select countries and click "Find Shortest Path"</span>`;
+  setFindButtonIdle();
 }
 
-/* ── Map events ──────────────────────────── */
+findBtn.addEventListener('click', () => {
+  void findPath().catch((error) => {
+    console.error('Failed to find path:', error);
+    setFindButtonIdle();
+  });
+});
+
+resetBtn.addEventListener('click', resetGraph);
+
 function onMoved() {
   repositionEdges();
   repositionLabels();
@@ -715,7 +923,6 @@ map.on('move',    onMoved);
 map.on('zoom',    onMoved);
 map.on('zoomend', () => { rebuildDotSizes(); onMoved(); });
 
-/* ── Boot ────────────────────────────────── */
 map.whenReady(() => {
   buildEdgeSvg();
   buildMarkers();
